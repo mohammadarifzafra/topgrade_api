@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-+_q9s&%ws-35^#a@k8fkwc)u3mt&uc+mrxf_ns!(eans)d^w3g
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*', 'https://9a6fcab3fdbf.ngrok-free.app']
+ALLOWED_HOSTS = ['*', '9a6fcab3fdbf.ngrok-free.app']
 
 
 # Application definition
@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
     'ninja',
@@ -45,6 +46,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -150,3 +152,17 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
 }
+
+# CORS settings
+CORS_ALLOWED_ORIGINS = [
+    "https://9a6fcab3fdbf.ngrok-free.app",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_ALL_ORIGINS = False
+
+# CSRF trusted origins
+CSRF_TRUSTED_ORIGINS = [
+    "https://9a6fcab3fdbf.ngrok-free.app",
+]
