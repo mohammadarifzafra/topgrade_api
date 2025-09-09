@@ -13,9 +13,12 @@ class SignupSchema(Schema):
 class RequestOtpSchema(Schema):
     email: str
 
-class ResetPasswordSchema(Schema):
+class VerifyOtpSchema(Schema):
     email: str
     otp: str
+
+class ResetPasswordSchema(Schema):
+    email: str
     new_password: str
     confirm_password: str
 

@@ -104,7 +104,6 @@ http://your-domain.com/auth/
 {
     "success": true,
     "message": "OTP sent to phone successfully",
-    "otp": "654321",
     "user_exists": true
 }
 ```
@@ -137,13 +136,31 @@ http://your-domain.com/auth/
 }
 ```
 
+**Error Responses**:
+```json
+// No OTP request found
+{
+    "message": "No OTP request found. Please request OTP first."
+}
+
+// OTP expired
+{
+    "message": "OTP has expired. Please request a new OTP."
+}
+
+// Invalid OTP
+{
+    "message": "Invalid OTP"
+}
+```
+
 **Note**: If user doesn't exist, they will be automatically created with:
 - **fullname**: Masked phone (e.g., "98XXXXXXX0")
 - **email**: Auto-generated (e.g., "phone_9876543210_1703123456@tempuser.com")
 
 ---
 
-### 4. Password Reset (2-Step Process)
+### 4. Password Reset (3-Step Process)
 
 #### Step 1: Request OTP for Reset
 **Endpoint**: `POST /auth/request-otp`
@@ -159,19 +176,56 @@ http://your-domain.com/auth/
 ```json
 {
     "success": true,
-    "message": "OTP sent successfully",
+    "message": "OTP sent successfully"
+}
+```
+
+**Error Response** (404):
+```json
+{
+    "message": "User with this email does not exist"
+}
+```
+
+#### Step 2: Verify OTP
+**Endpoint**: `POST /auth/verify-otp`
+
+**Request Body**:
+```json
+{
+    "email": "john@example.com",
     "otp": "654321"
 }
 ```
 
-#### Step 2: Reset Password
+**Success Response** (200):
+```json
+{
+    "success": true,
+    "message": "OTP verified successfully"
+}
+```
+
+**Error Responses**:
+```json
+// Invalid OTP
+{
+    "message": "Invalid OTP"
+}
+
+// User not found
+{
+    "message": "User with this email does not exist"
+}
+```
+
+#### Step 3: Reset Password
 **Endpoint**: `POST /auth/reset-password`
 
 **Request Body**:
 ```json
 {
     "email": "john@example.com",
-    "otp": "654321",
     "new_password": "newpassword123",
     "confirm_password": "newpassword123"
 }
@@ -182,6 +236,19 @@ http://your-domain.com/auth/
 {
     "success": true,
     "message": "Password reset successfully"
+}
+```
+
+**Error Responses**:
+```json
+// Passwords don't match
+{
+    "message": "Passwords do not match"
+}
+
+// User not found
+{
+    "message": "User with this email does not exist"
 }
 ```
 
@@ -218,8 +285,10 @@ http://your-domain.com/auth/
 
 ### 1. OTP Configuration
 - **Static OTP**: Currently set to "654321" for all requests
+- **OTP Expiration**: 10 minutes for both email and phone OTP
 - **Phone Validation**: Must be exactly 10 digits
 - **Supported Formats**: "9876543210", "+91 9876543210", "(987) 654-3210"
+- **Security**: OTP verification is required before password reset or phone signin
 
 ### 2. Security Best Practices
 - Store tokens securely (not in plain localStorage for production)
@@ -239,6 +308,14 @@ http://your-domain.com/auth/
 - **Refresh Token**: 7 days expiry
 - **Auto-refresh**: Implement automatic token refresh
 - **Logout**: Clear all stored tokens
+
+### 5. OTP Verification Security
+- **Email Password Reset**: Must complete 3-step flow (request → verify → reset)
+- **Phone Signin**: Must complete 2-step flow (request → signin with OTP)
+- **Verification Tracking**: System tracks OTP verification status internally
+- **One-time Use**: OTP verification records are cleaned up after successful completion
+- **Expiration**: All OTP verifications expire after 10 minutes
+- **Sequential Flow**: Cannot skip steps - must request OTP before verification/signin
 
 ---
 

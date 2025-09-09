@@ -2,10 +2,9 @@ from ninja import NinjaAPI
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.http import JsonResponse
-from .schemas import LoginSchema, SignupSchema, RequestOtpSchema, ResetPasswordSchema, RequestPhoneOtpSchema, PhoneSigninSchema, RefreshTokenSchema
-from .models import CustomUser
+from .schemas import LoginSchema, SignupSchema, RequestOtpSchema, VerifyOtpSchema, ResetPasswordSchema, RequestPhoneOtpSchema, PhoneSigninSchema, RefreshTokenSchema
+from .models import CustomUser, OTPVerification, PhoneOTPVerification
 from django.utils import timezone
-import uuid
 import time
 
 # Initialize Django Ninja API for authentication
@@ -71,6 +70,19 @@ def request_otp(request, otp_data: RequestOtpSchema):
         # Check if user exists
         user = CustomUser.objects.get(email=otp_data.email)
         
+        # Create or update OTP verification record
+        otp_verification, created = OTPVerification.objects.get_or_create(
+            email=otp_data.email,
+            defaults={'is_verified': False}
+        )
+        
+        # Reset verification status for new OTP request
+        if not created:
+            otp_verification.is_verified = False
+            otp_verification.verified_at = None
+            otp_verification.expires_at = timezone.now() + timezone.timedelta(minutes=10)
+            otp_verification.save()
+        
         return {
             "success": True,
             "message": "OTP sent successfully",
@@ -81,15 +93,49 @@ def request_otp(request, otp_data: RequestOtpSchema):
     except Exception as e:
         return JsonResponse({"message": "Error sending OTP"}, status=500)
 
+@auth_api.post("/verify-otp")
+def verify_otp(request, verify_data: VerifyOtpSchema):
+    """
+    Verify OTP for password reset
+    """
+    try:
+        # Check if user exists
+        user = CustomUser.objects.get(email=verify_data.email)
+        
+        # Check if OTP verification record exists
+        try:
+            otp_verification = OTPVerification.objects.get(email=verify_data.email)
+        except OTPVerification.DoesNotExist:
+            return JsonResponse({"message": "No OTP request found. Please request OTP first."}, status=400)
+        
+        # Check if OTP verification has expired
+        if otp_verification.is_expired():
+            return JsonResponse({"message": "OTP has expired. Please request a new OTP."}, status=400)
+        
+        # Check if OTP is correct (static OTP: 654321)
+        if verify_data.otp != "654321":
+            return JsonResponse({"message": "Invalid OTP"}, status=400)
+        
+        # Mark OTP as verified
+        otp_verification.is_verified = True
+        otp_verification.verified_at = timezone.now()
+        otp_verification.save()
+        
+        return {
+            "success": True,
+            "message": "OTP verified successfully",
+        }
+        
+    except CustomUser.DoesNotExist:
+        return JsonResponse({"message": "User with this email does not exist"}, status=404)
+    except Exception as e:
+        return JsonResponse({"message": "Error verifying OTP"}, status=500)
+
 @auth_api.post("/reset-password")
 def reset_password(request, reset_data: ResetPasswordSchema):
     """
-    Reset password API - allows users to reset their password using email and OTP
+    Reset password API - allows users to reset their password using email, password, and confirm password
     """
-    # Check if OTP is correct (static OTP: 654321)
-    if reset_data.otp != "654321":
-        return JsonResponse({"message": "Invalid OTP"}, status=400)
-    
     # Check if passwords match
     if reset_data.new_password != reset_data.confirm_password:
         return JsonResponse({"message": "Passwords do not match"}, status=400)
@@ -98,9 +144,25 @@ def reset_password(request, reset_data: ResetPasswordSchema):
         # Check if user exists
         user = CustomUser.objects.get(email=reset_data.email)
         
+        # Check if OTP was verified
+        try:
+            otp_verification = OTPVerification.objects.get(email=reset_data.email)
+        except OTPVerification.DoesNotExist:
+            return JsonResponse({"message": "OTP verification required. Please request and verify OTP first."}, status=400)
+        
+        # Check if OTP verification is still valid and verified
+        if not otp_verification.is_verified:
+            return JsonResponse({"message": "OTP not verified. Please verify OTP before resetting password."}, status=400)
+        
+        if otp_verification.is_expired():
+            return JsonResponse({"message": "OTP verification has expired. Please request a new OTP."}, status=400)
+        
         # Update the password
         user.set_password(reset_data.new_password)
         user.save()
+        
+        # Clean up the OTP verification record after successful password reset
+        otp_verification.delete()
         
         return {
             "success": True,
@@ -130,6 +192,19 @@ def request_phone_otp(request, phone_data: RequestPhoneOtpSchema):
     except CustomUser.DoesNotExist:
         user_exists = False
     
+    # Create or update Phone OTP verification record
+    phone_otp_verification, created = PhoneOTPVerification.objects.get_or_create(
+        phone_number=phone_data.phone_number,
+        defaults={'is_verified': False}
+    )
+    
+    # Reset verification status for new OTP request
+    if not created:
+        phone_otp_verification.is_verified = False
+        phone_otp_verification.verified_at = None
+        phone_otp_verification.expires_at = timezone.now() + timezone.timedelta(minutes=10)
+        phone_otp_verification.save()
+    
     return {
         "success": True,
         "message": "OTP sent to phone successfully",
@@ -145,6 +220,16 @@ def phone_signin(request, phone_data: PhoneSigninSchema):
     clean_phone = phone_data.phone_number.replace('+', '').replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
     if len(clean_phone) != 10 or not clean_phone.isdigit():
         return JsonResponse({"message": "Phone number must be exactly 10 digits"}, status=400)
+    
+    # Check if Phone OTP verification record exists
+    try:
+        phone_otp_verification = PhoneOTPVerification.objects.get(phone_number=phone_data.phone_number)
+    except PhoneOTPVerification.DoesNotExist:
+        return JsonResponse({"message": "No OTP request found. Please request OTP first."}, status=400)
+    
+    # Check if OTP verification has expired
+    if phone_otp_verification.is_expired():
+        return JsonResponse({"message": "OTP has expired. Please request a new OTP."}, status=400)
     
     # Check if OTP is correct (static OTP: 654321)
     if phone_data.otp != "654321":
@@ -200,6 +285,9 @@ def phone_signin(request, phone_data: PhoneSigninSchema):
     try:
         # Generate tokens for login
         refresh = RefreshToken.for_user(user)
+        
+        # Clean up the Phone OTP verification record after successful signin
+        phone_otp_verification.delete()
         
         return {
             "success": True,
