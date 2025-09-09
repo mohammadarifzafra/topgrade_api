@@ -9,3 +9,12 @@ class SignupSchema(Schema):
     email: str
     password: str
     confirm_password: str
+
+class RequestOtpSchema(Schema):
+    email: str
+
+class ResetPasswordSchema(Schema):
+    email: str
+    otp: str
+    new_password: str
+    confirm_password: str

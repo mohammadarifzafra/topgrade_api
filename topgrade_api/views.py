@@ -2,8 +2,10 @@ from ninja import NinjaAPI
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.http import JsonResponse
-from .schemas import LoginSchema, SignupSchema
+from .schemas import LoginSchema, SignupSchema, RequestOtpSchema, ResetPasswordSchema
 from .models import CustomUser
+from django.utils import timezone
+import uuid
 
 # Initialize Django Ninja API
 api = NinjaAPI()
@@ -58,3 +60,54 @@ def signup(request, user_data: SignupSchema):
         }
     except Exception as e:
         return JsonResponse({"message": "Error creating user"}, status=500)
+
+@api.post("/request-otp")
+def request_otp(request, otp_data: RequestOtpSchema):
+    """
+    Request OTP for password reset
+    """
+    try:
+        # Check if user exists
+        user = CustomUser.objects.get(email=otp_data.email)
+        
+        return {
+            "success": True,
+            "message": "OTP sent successfully",
+            "otp": "654321"  # Static OTP
+        }
+        
+    except CustomUser.DoesNotExist:
+        return JsonResponse({"message": "User with this email does not exist"}, status=404)
+    except Exception as e:
+        return JsonResponse({"message": f"Error sending OTP: {str(e)}"}, status=500)
+
+@api.post("/reset-password")
+def reset_password(request, reset_data: ResetPasswordSchema):
+    """
+    Reset password API - allows users to reset their password using email, OTP and reset token
+    """
+    # Check if OTP is correct (static OTP: 654321)
+    if reset_data.otp != "654321":
+        return JsonResponse({"message": "Invalid OTP"}, status=400)
+    
+    # Check if passwords match
+    if reset_data.new_password != reset_data.confirm_password:
+        return JsonResponse({"message": "Passwords do not match"}, status=400)
+    
+    try:
+        # Check if user exists
+        user = CustomUser.objects.get(email=reset_data.email)
+        
+        # Update the password
+        user.set_password(reset_data.new_password)
+        user.save()
+        
+        return {
+            "success": True,
+            "message": "Password reset successfully"
+        }
+        
+    except CustomUser.DoesNotExist:
+        return JsonResponse({"message": "User with this email does not exist"}, status=404)
+    except Exception as e:
+        return JsonResponse({"message": "Error resetting password"}, status=500)
