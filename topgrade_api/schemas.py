@@ -25,3 +25,6 @@ class RequestPhoneOtpSchema(Schema):
 class PhoneSigninSchema(Schema):
     phone_number: str
     otp: str
+
+class RefreshTokenSchema(Schema):
+    refresh_token: str

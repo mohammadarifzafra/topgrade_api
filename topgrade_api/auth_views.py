@@ -2,7 +2,7 @@ from ninja import NinjaAPI
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.http import JsonResponse
-from .schemas import LoginSchema, SignupSchema, RequestOtpSchema, ResetPasswordSchema, RequestPhoneOtpSchema, PhoneSigninSchema
+from .schemas import LoginSchema, SignupSchema, RequestOtpSchema, ResetPasswordSchema, RequestPhoneOtpSchema, PhoneSigninSchema, RefreshTokenSchema
 from .models import CustomUser
 from django.utils import timezone
 import uuid
@@ -27,7 +27,7 @@ def signin(request, credentials: LoginSchema):
             "refresh_token": str(refresh)
         }
     else:
-        return JsonResponse({"message": "User not found"}, status=401)
+        return JsonResponse({"message": "Invalid credentials"}, status=401)
 
 @auth_api.post("/signup")
 def signup(request, user_data: SignupSchema):
@@ -74,7 +74,6 @@ def request_otp(request, otp_data: RequestOtpSchema):
         return {
             "success": True,
             "message": "OTP sent successfully",
-            "otp": "654321"  # Static OTP
         }
         
     except CustomUser.DoesNotExist:
@@ -134,7 +133,6 @@ def request_phone_otp(request, phone_data: RequestPhoneOtpSchema):
     return {
         "success": True,
         "message": "OTP sent to phone successfully",
-        "otp": "654321",  # Static OTP
         "user_exists": user_exists
     }
 
@@ -212,3 +210,24 @@ def phone_signin(request, phone_data: PhoneSigninSchema):
         
     except Exception as e:
         return JsonResponse({"message": "Error during phone signin"}, status=500)
+
+@auth_api.post("/refresh")
+def refresh_token(request, token_data: RefreshTokenSchema):
+    """
+    Refresh access token using refresh token
+    """
+    try:
+        # Create RefreshToken object from the provided refresh token
+        refresh = RefreshToken(token_data.refresh_token)
+        
+        # Generate new access token
+        new_access_token = str(refresh.access_token)
+        
+        return {
+            "success": True,
+            "message": "Token refreshed successfully",
+            "access_token": new_access_token
+        }
+        
+    except Exception as e:
+        return JsonResponse({"message": "Invalid or expired refresh token"}, status=401)
