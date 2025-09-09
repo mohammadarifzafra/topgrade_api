@@ -18,3 +18,10 @@ class ResetPasswordSchema(Schema):
     otp: str
     new_password: str
     confirm_password: str
+
+class RequestPhoneOtpSchema(Schema):
+    phone_number: str
+
+class PhoneSigninSchema(Schema):
+    phone_number: str
+    otp: str
