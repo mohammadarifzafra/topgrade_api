@@ -42,7 +42,13 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'ninja',
     'topgrade_api',
+    'dashboard',
+    'website',
+    'tailwind',
+    'theme'
 ]
+
+TAILWIND_APP_NAME = 'theme'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
