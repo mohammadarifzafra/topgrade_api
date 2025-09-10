@@ -31,3 +31,6 @@ class PhoneSigninSchema(Schema):
 
 class RefreshTokenSchema(Schema):
     refresh_token: str
+
+class AreaOfInterestSchema(Schema):
+    area_of_intrest: str

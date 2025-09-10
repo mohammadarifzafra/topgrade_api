@@ -30,7 +30,7 @@ class CustomUser(AbstractUser):
     username = models.CharField(max_length=150, unique=False, blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     fullname = models.CharField(max_length=255, blank=True, null=True)
-    
+    area_of_intrest = models.CharField(max_length=255, blank=True, null=True)
     objects = CustomUserManager()
     
     USERNAME_FIELD = 'email'

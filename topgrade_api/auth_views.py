@@ -23,7 +23,8 @@ def signin(request, credentials: LoginSchema):
             "success": True,
             "message": "Signin successful",
             "access_token": str(refresh.access_token),
-            "refresh_token": str(refresh)
+            "refresh_token": str(refresh),
+            "has_area_of_intrest": bool(user.area_of_intrest and user.area_of_intrest.strip())
         }
     else:
         return JsonResponse({"message": "Invalid credentials"}, status=401)
@@ -56,7 +57,8 @@ def signup(request, user_data: SignupSchema):
             "success": True,
             "message": "User created successfully",
             "access_token": str(refresh.access_token),
-            "refresh_token": str(refresh)
+            "refresh_token": str(refresh),
+            "has_area_of_intrest": bool(user.area_of_intrest and user.area_of_intrest.strip())
         }
     except Exception as e:
         return JsonResponse({"message": "Error creating user"}, status=500)
@@ -293,7 +295,8 @@ def phone_signin(request, phone_data: PhoneSigninSchema):
             "success": True,
             "message": message,
             "access_token": str(refresh.access_token),
-            "refresh_token": str(refresh)
+            "refresh_token": str(refresh),
+            "has_area_of_intrest": bool(user.area_of_intrest and user.area_of_intrest.strip())
         }
         
     except Exception as e:
