@@ -16,7 +16,8 @@ def admin_required(view_func):
             return redirect('/dashboard/signin/')
         
         if not request.user.is_superuser:
-            return HttpResponseForbidden("Access denied. Only administrators can access the dashboard.")
+            messages.error(request, 'You are not authorized to access the dashboard.')
+            return redirect('/dashboard/signin/')
         
         return view_func(request, *args, **kwargs)
     return wrapper
@@ -34,7 +35,7 @@ def signin_view(request):
         
         if user is not None and user.is_superuser:
             login(request, user)
-            return redirect('dashboard:dashboard')
+            return redirect('/dashboard/')
         else:
             messages.error(request, 'Invalid credentials or you are not authorized to access the dashboard.')
     
@@ -45,7 +46,7 @@ def dashboard_logout(request):
     Logout view for dashboard
     """
     logout(request)
-    return redirect('dashboard:login')
+    return redirect('/dashboard/signin/')
 
 @admin_required
 def dashboard_home(request):
