@@ -26,11 +26,18 @@ class CustomUserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 class CustomUser(AbstractUser):
+    USER_ROLES = [
+        ('student', 'Student'),
+        ('tutor', 'Tutor'),
+        ('admin', 'Admin'),
+    ]
+    
     email = models.EmailField(unique=True)
     username = models.CharField(max_length=150, unique=False, blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     fullname = models.CharField(max_length=255, blank=True, null=True)
     area_of_intrest = models.CharField(max_length=255, blank=True, null=True)
+    role = models.CharField(max_length=20, choices=USER_ROLES, default='student')
     objects = CustomUserManager()
     
     USERNAME_FIELD = 'email'

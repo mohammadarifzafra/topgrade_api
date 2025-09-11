@@ -38,7 +38,8 @@ http://your-domain.com/auth/
     "success": true,
     "message": "User created successfully",
     "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+    "has_area_of_intrest": true
 }
 ```
 
@@ -74,7 +75,8 @@ http://your-domain.com/auth/
     "success": true,
     "message": "Signin successful",
     "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+    "has_area_of_intrest": true
 }
 ```
 
@@ -132,7 +134,8 @@ http://your-domain.com/auth/
     "success": true,
     "message": "Phone signin successful",
     "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+    "has_area_of_intrest": true
 }
 ```
 

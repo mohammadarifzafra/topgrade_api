@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-+_q9s&%ws-35^#a@k8fkwc)u3mt&uc+mrxf_ns!(eans)d^w3g
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*', '9a6fcab3fdbf.ngrok-free.app']
+ALLOWED_HOSTS = ['*', 'a001cb2a9b2e.ngrok-free.app']
 
 
 # Application definition
@@ -126,7 +126,11 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -135,6 +139,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Custom User Model
 AUTH_USER_MODEL = 'topgrade_api.CustomUser'
+
+# Custom Authentication Backend - Django admin uses standard auth, dashboard uses custom auth
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',  # Standard Django admin authentication
+    'topgrade_api.backends.TutorOnlyBackend',     # Custom dashboard authentication
+]
 
 # JWT Settings
 from datetime import timedelta
@@ -161,7 +171,7 @@ REST_FRAMEWORK = {
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
-    "https://9a6fcab3fdbf.ngrok-free.app",
+    "https://a001cb2a9b2e.ngrok-free.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -170,5 +180,5 @@ CORS_ALLOW_ALL_ORIGINS = False
 
 # CSRF trusted origins
 CSRF_TRUSTED_ORIGINS = [
-    "https://9a6fcab3fdbf.ngrok-free.app",
+    "https://a001cb2a9b2e.ngrok-free.app",
 ]
