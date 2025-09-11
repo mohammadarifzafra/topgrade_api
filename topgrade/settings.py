@@ -143,7 +143,7 @@ AUTH_USER_MODEL = 'topgrade_api.CustomUser'
 # Custom Authentication Backend - Django admin uses standard auth, dashboard uses custom auth
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',  # Standard Django admin authentication
-    'topgrade_api.backends.TutorOnlyBackend',     # Custom dashboard authentication
+    'topgrade_api.backends.AdminOnlyBackend',     # Custom dashboard authentication
 ]
 
 # JWT Settings

@@ -20,6 +20,7 @@ from django.urls import include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('dashboard/', include('dashboard.urls')),
     path('', include('website.urls')),
     path('api/', include('topgrade_api.urls')),
 ]
