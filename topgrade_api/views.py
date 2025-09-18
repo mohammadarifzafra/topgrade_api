@@ -85,7 +85,7 @@ def get_all_programs_with_filters(
     max_price: float = None,
     min_rating: float = None,
     search: str = None,
-    sort_by: str = 'title',
+    sort_by: str = 'most_relevant',
     sort_order: str = 'asc'
 ):
     """
@@ -219,9 +219,28 @@ def get_all_programs_with_filters(
                 all_programs.append(program_data)
         
         # Apply sorting to combined results
-        if sort_by in ['title', 'price', 'program_rating', 'available_slots', 'discounted_price']:
+        if sort_by in ['title', 'price', 'program_rating', 'available_slots', 'discounted_price', 'most_relevant', 'recently_added', 'top_rated']:
             reverse_order = sort_order == 'desc'
-            all_programs.sort(key=lambda x: x.get(sort_by, 0), reverse=reverse_order)
+            
+            if sort_by == 'most_relevant':
+                # Sort by relevance: best sellers first, then by rating, then by enrolled students
+                all_programs.sort(key=lambda x: (
+                    not x.get('is_best_seller', False),  # Best sellers first (False sorts before True)
+                    -x.get('program_rating', 0),         # Higher rating first
+                    -x.get('enrolled_students', 0)       # More enrolled students first
+                ))
+            elif sort_by == 'recently_added':
+                # Sort by creation date (newest first) - using ID as proxy for creation order
+                all_programs.sort(key=lambda x: x.get('id', 0), reverse=True)
+            elif sort_by == 'top_rated':
+                # Sort by rating (highest first), then by number of enrolled students
+                all_programs.sort(key=lambda x: (
+                    -x.get('program_rating', 0),         # Higher rating first
+                    -x.get('enrolled_students', 0)       # More enrolled students as tiebreaker
+                ))
+            else:
+                # Standard sorting for other fields
+                all_programs.sort(key=lambda x: x.get(sort_by, 0), reverse=reverse_order)
         
         # Get filter statistics
         regular_count = sum(1 for p in all_programs if p['type'] == 'program')

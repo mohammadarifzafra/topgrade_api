@@ -70,7 +70,7 @@ Authorization: Bearer <your_token>
   - `max_price` (optional): Maximum price
   - `min_rating` (optional): Minimum rating (0-5)
   - `search` (optional): Search in title/description
-  - `sort_by` (optional): 'title', 'price', 'program_rating', 'available_slots', 'discounted_price'
+  - `sort_by` (optional): 'most_relevant', 'recently_added', 'top_rated', 'title', 'price', 'program_rating', 'available_slots', 'discounted_price'
   - `sort_order` (optional): 'asc' or 'desc'
 
 - **Example**: `/api/programs/filter?program_type=program&category_id=1&min_price=1000&sort_by=price`
@@ -556,8 +556,18 @@ Authorization: Bearer <your_token>
 ### Filtering & Sorting:
 - All filter parameters are optional
 - Combine multiple filters for precise results
-- Sort by price, rating, or other fields
 - Search works across title, subtitle, and description
+
+#### Available Sorting Options:
+- **`most_relevant`** (default): Best sellers first, then by highest rating, then by most enrolled students
+- **`recently_added`**: Newest courses first (based on course ID)
+- **`top_rated`**: Highest rated courses first, with enrollment count as tiebreaker
+- **`title`**: Alphabetical order by course name
+- **`price`**: By course price (original price)
+- **`discounted_price`**: By final price after discount
+- **`program_rating`**: By user rating (0-5 stars)
+- **`available_slots`**: By number of available seats
+- **`sort_order`**: Use 'asc' for ascending or 'desc' for descending (applies to price, rating, etc.)
 
 ### Progress Tracking:
 - Videos considered completed at 90% watch time
