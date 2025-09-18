@@ -95,3 +95,51 @@ class PhoneOTPVerification(models.Model):
     
     def __str__(self):
         return f"Phone OTP for {self.phone_number} - Verified: {self.is_verified}"
+
+class Category(models.Model):
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True)
+    icon = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name_plural = "Categories"
+
+class Program(models.Model):
+    title = models.CharField(max_length=200)
+    subtitle = models.CharField(max_length=200, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='programs')
+    image = models.ImageField(upload_to='program_images/', blank=True, null=True)
+    batch_starts = models.CharField(max_length=50)
+    available_slots = models.IntegerField()
+    duration = models.CharField(max_length=50)
+    program_rating = models.DecimalField(max_digits=3, decimal_places=1, default=0.0)
+    job_openings = models.CharField(max_length=50)
+    global_market_size = models.CharField(max_length=50)
+    avg_annual_salary = models.CharField(max_length=50)
+    is_best_seller = models.BooleanField(default=False)
+    icon = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return self.title
+
+class Syllabus(models.Model):
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='syllabuses')
+    module_title = models.CharField(max_length=200)
+
+    def __str__(self):
+        return self.module_title
+
+class Topic(models.Model):
+    syllabus = models.ForeignKey(Syllabus, on_delete=models.CASCADE, related_name='topics')
+    topic_title = models.CharField(max_length=200)
+    video_url = models.URLField(blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return self.topic_title
