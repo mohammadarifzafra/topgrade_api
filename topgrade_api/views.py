@@ -75,6 +75,112 @@ def get_categories(request):
         return JsonResponse({"success": False, "message": f"Error fetching categories: {str(e)}"}, status=500)
 
 
+@api.get("/landing")
+def get_landing_data(request):
+    """
+    Get landing page data with different program groups
+    Returns: top_course, recently_added, featured, programs, advanced_programs
+    Each group contains max 5 programs
+    """
+    try:
+        def format_program_data(program, program_type):
+            """Helper function to format program data consistently"""
+            discounted_price = program.price
+            if program.discount_percentage > 0:
+                discounted_price = program.price * (1 - program.discount_percentage / 100)
+            
+            enrolled_students = 0
+            if program_type == 'program':
+                enrolled_students = UserPurchase.objects.filter(
+                    program=program,
+                    status='completed'
+                ).count()
+            else:
+                enrolled_students = UserPurchase.objects.filter(
+                    advanced_program=program,
+                    status='completed'
+                ).count()
+            
+            return {
+                "id": program.id,
+                "type": program_type,
+                "title": program.title,
+                "subtitle": program.subtitle,
+                "description": program.description,
+                "category": {
+                    "id": program.category.id,
+                    "name": program.category.name,
+                } if hasattr(program, 'category') and program.category else None,
+                "image": program.image.url if program.image else None,
+                "duration": program.duration,
+                "program_rating": float(program.program_rating),
+                "is_best_seller": program.is_best_seller,
+                "enrolled_students": enrolled_students,
+                "pricing": {
+                    "original_price": float(program.price),
+                    "discount_percentage": float(program.discount_percentage),
+                    "discounted_price": float(discounted_price),
+                    "savings": float(program.price - discounted_price)
+                },
+            }
+        
+        # Top Courses - Highest rated programs (both regular and advanced)
+        top_programs = Program.objects.filter(program_rating__gte=4.0).order_by('-program_rating', '-id')[:3]
+        top_advanced = AdvanceProgram.objects.filter(program_rating__gte=4.0).order_by('-program_rating', '-id')[:2]
+        
+        top_course = []
+        for program in top_programs:
+            top_course.append(format_program_data(program, 'program'))
+        for program in top_advanced:
+            top_course.append(format_program_data(program, 'advanced_program'))
+        
+        # Recently Added - Latest programs by ID (assuming higher ID = newer)
+        recent_programs = Program.objects.all().order_by('-id')[:3]
+        recent_advanced = AdvanceProgram.objects.all().order_by('-id')[:2]
+        
+        recently_added = []
+        for program in recent_programs:
+            recently_added.append(format_program_data(program, 'program'))
+        for program in recent_advanced:
+            recently_added.append(format_program_data(program, 'advanced_program'))
+        
+        # Featured - Best seller programs
+        featured_programs = Program.objects.filter(is_best_seller=True).order_by('-program_rating', '-id')[:3]
+        featured_advanced = AdvanceProgram.objects.filter(is_best_seller=True).order_by('-program_rating', '-id')[:2]
+        
+        featured = []
+        for program in featured_programs:
+            featured.append(format_program_data(program, 'program'))
+        for program in featured_advanced:
+            featured.append(format_program_data(program, 'advanced_program'))
+        
+        # Programs - Regular programs only (max 5)
+        regular_programs = Program.objects.all().order_by('-program_rating', '-id')[:5]
+        programs = []
+        for program in regular_programs:
+            programs.append(format_program_data(program, 'program'))
+        
+        # Advanced Programs - Advanced programs only (max 5)
+        advance_programs = AdvanceProgram.objects.all().order_by('-program_rating', '-id')[:5]
+        advanced_programs = []
+        for program in advance_programs:
+            advanced_programs.append(format_program_data(program, 'advanced_program'))
+        
+        return {
+            "success": True,
+            "data": {
+                "top_course": top_course[:5],  # Ensure max 5
+                "recently_added": recently_added[:5],  # Ensure max 5
+                "featured": featured[:5],  # Ensure max 5
+                "programs": programs,  # Already limited to 5
+                "advanced_programs": advanced_programs  # Already limited to 5
+            }
+        }
+        
+    except Exception as e:
+        return JsonResponse({"success": False, "message": f"Error fetching landing data: {str(e)}"}, status=500)
+
+
 @api.get("/programs/filter")
 def get_all_programs_with_filters(
     request,
