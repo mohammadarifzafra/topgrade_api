@@ -144,7 +144,7 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Program)
 class ProgramAdmin(admin.ModelAdmin):
-    list_display = ['title', 'category', 'price', 'discount_percentage', 'batch_starts', 'available_slots', 'is_best_seller']
+    list_display = ['title', 'subtitle', 'category', 'price', 'discount_percentage', 'batch_starts', 'available_slots', 'is_best_seller']
     list_filter = ['category', 'is_best_seller', 'batch_starts']
     search_fields = ['title', 'subtitle']
     ordering = ['title']

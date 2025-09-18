@@ -63,10 +63,6 @@ def get_categories(request):
             category_data = {
                 "id": category.id,
                 "name": category.name,
-                "description": category.description,
-                "icon": category.icon,
-                "created_at": category.created_at.isoformat(),
-                "updated_at": category.updated_at.isoformat()
             }
             categories_data.append(category_data)
         
@@ -79,22 +75,230 @@ def get_categories(request):
         return JsonResponse({"success": False, "message": f"Error fetching categories: {str(e)}"}, status=500)
 
 
-@api.get("/programs/{program_id}/details")
-def get_program_details(request, program_id: int):
+@api.get("/programs/filter")
+def get_all_programs_with_filters(
+    request,
+    program_type: str = None,
+    category_id: int = None,
+    is_best_seller: bool = None,
+    min_price: float = None,
+    max_price: float = None,
+    min_rating: float = None,
+    search: str = None,
+    sort_by: str = 'title',
+    sort_order: str = 'asc'
+):
     """
-    Get detailed information about a specific program including syllabus and topics
+    Get all programs (regular and advanced) with comprehensive filtering options
     """
     try:
-        # Get program with category
+        # Filter parameters are now function arguments
+        # Convert string category_id to int if provided
+        if category_id is not None:
+            category_id = str(category_id)
+        
+        all_programs = []
+        
+        # Include regular programs
+        if program_type in [None, 'all', 'program']:
+            programs_query = Program.objects.all().select_related('category')
+            
+            # Apply category filter for regular programs
+            if category_id is not None:
+                try:
+                    category = Category.objects.get(id=category_id)
+                    programs_query = programs_query.filter(category=category)
+                except Category.DoesNotExist:
+                    pass  # Skip invalid category
+            
+            # Apply other filters
+            if is_best_seller is not None:
+                programs_query = programs_query.filter(is_best_seller=is_best_seller)
+            
+            if min_price is not None:
+                programs_query = programs_query.filter(price__gte=min_price)
+            
+            if max_price is not None:
+                programs_query = programs_query.filter(price__lte=max_price)
+            
+            if min_rating is not None:
+                programs_query = programs_query.filter(program_rating__gte=min_rating)
+            
+            if search:
+                programs_query = programs_query.filter(
+                    models.Q(title__icontains=search) | 
+                    models.Q(description__icontains=search) |
+                    models.Q(subtitle__icontains=search)
+                )
+            
+            # Convert regular programs to unified format
+            for program in programs_query:
+                discounted_price = program.price
+                if program.discount_percentage > 0:
+                    discounted_price = program.price * (1 - program.discount_percentage / 100)
+                
+                program_data = {
+                    "id": program.id,
+                    "type": "program",
+                    "title": program.title,
+                    "subtitle": program.subtitle,
+                    "description": program.description,
+                    "category": {
+                        "id": program.category.id,
+                        "name": program.category.name,
+                    } if program.category else None,
+                    "image": program.image.url if program.image else None,
+                    "duration": program.duration,
+                    "program_rating": float(program.program_rating),
+                    "is_best_seller": program.is_best_seller,
+                    "enrolled_students": UserPurchase.objects.filter(
+                        program=program,
+                        status='completed'
+                    ).count(),
+                    "pricing": {
+                        "original_price": float(program.price),
+                        "discount_percentage": float(program.discount_percentage),
+                        "discounted_price": float(discounted_price),
+                        "savings": float(program.price - discounted_price)
+                    },
+                }
+                all_programs.append(program_data)
+        
+        # Include advanced programs
+        if program_type in [None, 'all', 'advanced_program']:
+            advanced_programs_query = AdvanceProgram.objects.all()
+            
+            # Apply filters (category filter not applicable for advanced programs)
+            if is_best_seller is not None:
+                advanced_programs_query = advanced_programs_query.filter(is_best_seller=is_best_seller)
+            
+            if min_price is not None:
+                advanced_programs_query = advanced_programs_query.filter(price__gte=min_price)
+            
+            if max_price is not None:
+                advanced_programs_query = advanced_programs_query.filter(price__lte=max_price)
+            
+            if min_rating is not None:
+                advanced_programs_query = advanced_programs_query.filter(program_rating__gte=min_rating)
+            
+            if search:
+                advanced_programs_query = advanced_programs_query.filter(
+                    models.Q(title__icontains=search) | 
+                    models.Q(description__icontains=search) |
+                    models.Q(subtitle__icontains=search)
+                )
+            
+            # Convert advanced programs to unified format
+            for program in advanced_programs_query:
+                discounted_price = program.price
+                if program.discount_percentage > 0:
+                    discounted_price = program.price * (1 - program.discount_percentage / 100)
+                
+                program_data = {
+                    "id": program.id,
+                    "type": "advanced_program",
+                    "title": program.title,
+                    "subtitle": program.subtitle,
+                    "description": program.description,
+                    "category": None,  # Advanced programs don't have categories
+                    "image": program.image.url if program.image else None,
+                    "duration": program.duration,
+                    "program_rating": float(program.program_rating),
+                    "is_best_seller": program.is_best_seller,
+                    "enrolled_students": UserPurchase.objects.filter(
+                        advanced_program=program,
+                        status='completed'
+                    ).count(),
+                    "pricing": {
+                        "original_price": float(program.price),
+                        "discount_percentage": float(program.discount_percentage),
+                        "discounted_price": float(discounted_price),
+                        "savings": float(program.price - discounted_price)
+                    },
+                }
+                all_programs.append(program_data)
+        
+        # Apply sorting to combined results
+        if sort_by in ['title', 'price', 'program_rating', 'available_slots', 'discounted_price']:
+            reverse_order = sort_order == 'desc'
+            all_programs.sort(key=lambda x: x.get(sort_by, 0), reverse=reverse_order)
+        
+        # Get filter statistics
+        regular_count = sum(1 for p in all_programs if p['type'] == 'program')
+        advanced_count = sum(1 for p in all_programs if p['type'] == 'advanced_program')
+        
+        return {
+            "success": True,
+            "filters_applied": {
+                "program_type": program_type or 'all',
+                "category_id": category_id,
+                "is_best_seller": is_best_seller,
+                "min_price": min_price,
+                "max_price": max_price,
+                "min_rating": min_rating,
+                "search": search,
+                "sort_by": sort_by,
+                "sort_order": sort_order
+            },
+            "statistics": {
+                "total_count": len(all_programs),
+                "regular_programs_count": regular_count,
+                "advanced_programs_count": advanced_count
+            },
+            "programs": all_programs
+        }
+    except Exception as e:
+        return JsonResponse({"success": False, "message": f"Error fetching filtered programs: {str(e)}"}, status=500)
+
+
+@api.get("/program/{program_type}/{program_id}/details")
+def get_program_details(request, program_type: str, program_id: int):
+    """
+    Get detailed information about a specific program (regular or advanced) including syllabus and topics
+    """
+    try:
+        # Validate program type
+        if program_type not in ['program', 'advanced-program']:
+            return JsonResponse({
+                "success": False, 
+                "message": "Invalid program_type. Must be 'program' or 'advanced-program'"
+            }, status=400)
+        
+        # Get program based on type
         try:
-            program = Program.objects.select_related('category').get(id=program_id)
-        except Program.DoesNotExist:
-            return JsonResponse({"success": False, "message": "Program not found"}, status=404)
+            if program_type == 'program':
+                program = Program.objects.select_related('category').get(id=program_id)
+                program_model_type = 'program'
+            else:
+                program = AdvanceProgram.objects.get(id=program_id)
+                program_model_type = 'advanced_program'
+        except (Program.DoesNotExist, AdvanceProgram.DoesNotExist):
+            return JsonResponse({
+                "success": False, 
+                "message": f"{program_type.replace('-', ' ').title()} not found"
+            }, status=404)
         
         # Calculate discounted price
         discounted_price = program.price
         if program.discount_percentage > 0:
             discounted_price = program.price * (1 - program.discount_percentage / 100)
+        
+        # Check if user has purchased this program (for video access)
+        user = request.auth if hasattr(request, 'auth') else None
+        has_purchased = False
+        if user:
+            if program_type == 'program':
+                has_purchased = UserPurchase.objects.filter(
+                    user=user,
+                    program=program,
+                    status='completed'
+                ).exists()
+            else:
+                has_purchased = UserPurchase.objects.filter(
+                    user=user,
+                    advanced_program=program,
+                    status='completed'
+                ).exists()
         
         # Get syllabus with topics
         syllabus_list = []
@@ -103,12 +307,29 @@ def get_program_details(request, program_id: int):
         for syllabus in syllabi:
             topics_list = []
             for topic in syllabus.topics.all():
-                topic_data = {
-                    "id": topic.id,
-                    "topic_title": topic.topic_title,
-                    "is_free_trail": topic.is_free_trail,
-                    "is_intro": topic.is_intro
-                }
+                if program_type == 'program':
+                    # Regular programs have intro videos
+                    is_accessible = has_purchased or topic.is_intro
+                    topic_data = {
+                        "id": topic.id,
+                        "topic_title": topic.topic_title,
+                        "is_free_trail": topic.is_free_trail,
+                        "is_intro": topic.is_intro,
+                        "is_locked": not is_accessible
+                    }
+                else:
+                    # Advanced programs - all videos locked unless purchased
+                    topic_data = {
+                        "id": topic.id,
+                        "topic_title": topic.topic_title,
+                        "is_locked": not has_purchased
+                    }
+                    is_accessible = has_purchased
+                
+                # Only add video_url if accessible
+                if is_accessible:
+                    topic_data["video_url"] = topic.video_url
+                
                 topics_list.append(topic_data)
             
             syllabus_data = {
@@ -119,28 +340,21 @@ def get_program_details(request, program_id: int):
             }
             syllabus_list.append(syllabus_data)
         
-        # Program detailed data
+        # Build program data
         program_data = {
             "id": program.id,
+            "type": program_model_type,
             "title": program.title,
             "subtitle": program.subtitle,
-            "description": program.description,
             "category": {
                 "id": program.category.id,
                 "name": program.category.name,
-                "description": program.category.description,
-                "icon": program.category.icon
             } if program.category else None,
+            "description": program.description,
             "image": program.image.url if program.image else None,
-            "batch_starts": program.batch_starts,
-            "available_slots": program.available_slots,
             "duration": program.duration,
             "program_rating": float(program.program_rating),
-            "job_openings": program.job_openings,
-            "global_market_size": program.global_market_size,
-            "avg_annual_salary": program.avg_annual_salary,
             "is_best_seller": program.is_best_seller,
-            "icon": program.icon,
             "enrolled_students": UserPurchase.objects.filter(
                 program=program,
                 status='completed'
@@ -151,99 +365,234 @@ def get_program_details(request, program_id: int):
                 "discounted_price": float(discounted_price),
                 "savings": float(program.price - discounted_price)
             },
+        }
+        
+        return {
+            "success": True,
+            "program": program_data,
             "syllabus": {
                 "total_modules": len(syllabus_list),
                 "total_topics": sum(len(s["topics"]) for s in syllabus_list),
                 "modules": syllabus_list
             }
-        }
-        
-        return {
-            "success": True,
-            "program": program_data
         }
     except Exception as e:
         return JsonResponse({"success": False, "message": f"Error fetching program details: {str(e)}"}, status=500)
 
-
-@api.get("/advanced-programs/{program_id}/details")
-def get_advanced_program_details(request, program_id: int):
+@api.post("/bookmark", auth=AuthBearer())
+def add_to_bookmark(request, data: BookmarkSchema):
     """
-    Get detailed information about a specific advanced program including syllabus and topics
+    Add a course (program or advanced program) to user's bookmarks
     """
     try:
-        # Get advanced program
+        user = request.auth
+        
+        # Get request data from schema
+        program_type = data.program_type  # 'program' or 'advanced_program'
+        program_id = data.program_id
+        
+        # Validate input
+        if program_type not in ['program', 'advanced_program']:
+            return JsonResponse({"success": False, "message": "Invalid program_type. Must be 'program' or 'advanced_program'"}, status=400)
+        
+        # Get the program
         try:
-            program = AdvanceProgram.objects.get(id=program_id)
-        except AdvanceProgram.DoesNotExist:
-            return JsonResponse({"success": False, "message": "Advanced program not found"}, status=404)
+            if program_type == 'program':
+                program = Program.objects.get(id=program_id)
+                program_obj = program
+                advanced_program_obj = None
+            else:
+                program = AdvanceProgram.objects.get(id=program_id)
+                program_obj = None
+                advanced_program_obj = program
+        except (Program.DoesNotExist, AdvanceProgram.DoesNotExist):
+            return JsonResponse({"success": False, "message": "Program not found"}, status=404)
         
-        # Calculate discounted price
-        discounted_price = program.price
-        if program.discount_percentage > 0:
-            discounted_price = program.price * (1 - program.discount_percentage / 100)
+        # Check if already bookmarked
+        existing_bookmark = UserBookmark.objects.filter(
+            user=user,
+            program_type=program_type,
+            program=program_obj,
+            advanced_program=advanced_program_obj
+        ).first()
         
-        # Get syllabus with topics
-        syllabus_list = []
-        syllabi = program.syllabuses.all().prefetch_related('topics')
+        if existing_bookmark:
+            return JsonResponse({
+                "success": False,
+                "message": "Course is already in your bookmarks"
+            }, status=400)
         
-        for syllabus in syllabi:
-            topics_list = []
-            for topic in syllabus.topics.all():
-                topic_data = {
-                    "id": topic.id,
-                    "topic_title": topic.topic_title
-                }
-                topics_list.append(topic_data)
-            
-            syllabus_data = {
-                "id": syllabus.id,
-                "module_title": syllabus.module_title,
-                "topics_count": len(topics_list),
-                "topics": topics_list
-            }
-            syllabus_list.append(syllabus_data)
-        
-        # Advanced program detailed data
-        program_data = {
-            "id": program.id,
-            "title": program.title,
-            "subtitle": program.subtitle,
-            "description": program.description,
-            "image": program.image.url if program.image else None,
-            "batch_starts": program.batch_starts,
-            "available_slots": program.available_slots,
-            "duration": program.duration,
-            "program_rating": float(program.program_rating),
-            "job_openings": program.job_openings,
-            "global_market_size": program.global_market_size,
-            "avg_annual_salary": program.avg_annual_salary,
-            "is_best_seller": program.is_best_seller,
-            "icon": program.icon,
-            "enrolled_students": UserPurchase.objects.filter(
-                advanced_program=program,
-                status='completed'
-            ).count(),
-            "pricing": {
-                "original_price": float(program.price),
-                "discount_percentage": float(program.discount_percentage),
-                "discounted_price": float(discounted_price),
-                "savings": float(program.price - discounted_price)
-            },
-            "syllabus": {
-                "total_modules": len(syllabus_list),
-                "total_topics": sum(len(s["topics"]) for s in syllabus_list),
-                "modules": syllabus_list
-            }
-        }
+        # Create bookmark
+        bookmark = UserBookmark.objects.create(
+            user=user,
+            program_type=program_type,
+            program=program_obj,
+            advanced_program=advanced_program_obj,
+            bookmarked_date=timezone.now()
+        )
         
         return {
             "success": True,
-            "advanced_program": program_data
+            "message": "Course added to bookmarks successfully!",
+            "bookmark": {
+                "id": bookmark.id,
+                "program_type": bookmark.program_type,
+                "program_title": program.title,
+                "program_id": program.id,
+                "bookmarked_date": bookmark.bookmarked_date.isoformat()
+            }
         }
+        
     except Exception as e:
-        return JsonResponse({"success": False, "message": f"Error fetching advanced program details: {str(e)}"}, status=500)
+        return JsonResponse({"success": False, "message": f"Error adding bookmark: {str(e)}"}, status=500)
 
+@api.delete("/bookmark", auth=AuthBearer())
+def remove_from_bookmark(request, data: BookmarkSchema):
+    """
+    Remove a course from user's bookmarks
+    """
+    try:
+        user = request.auth
+        
+        # Get request data from schema
+        program_type = data.program_type
+        program_id = data.program_id
+        
+        # Validate input
+        if program_type not in ['program', 'advanced_program']:
+            return JsonResponse({"success": False, "message": "Invalid program_type. Must be 'program' or 'advanced_program'"}, status=400)
+        
+        # Get the program objects
+        try:
+            if program_type == 'program':
+                program_obj = Program.objects.get(id=program_id)
+                advanced_program_obj = None
+            else:
+                program_obj = None
+                advanced_program_obj = AdvanceProgram.objects.get(id=program_id)
+        except (Program.DoesNotExist, AdvanceProgram.DoesNotExist):
+            return JsonResponse({"success": False, "message": "Program not found"}, status=404)
+        
+        # Find and delete bookmark
+        bookmark = UserBookmark.objects.filter(
+            user=user,
+            program_type=program_type,
+            program=program_obj,
+            advanced_program=advanced_program_obj
+        ).first()
+        
+        if not bookmark:
+            return JsonResponse({
+                "success": False,
+                "message": "Course is not in your bookmarks"
+            }, status=404)
+        
+        program_title = program_obj.title if program_obj else advanced_program_obj.title
+        bookmark.delete()
+        
+        return {
+            "success": True,
+            "message": f"'{program_title}' removed from bookmarks successfully!"
+        }
+        
+    except Exception as e:
+        return JsonResponse({"success": False, "message": f"Error removing bookmark: {str(e)}"}, status=500)
+
+@api.get("/bookmarks", auth=AuthBearer())
+def get_user_bookmarks(request):
+    """
+    Get all bookmarks for the authenticated user
+    """
+    try:
+        user = request.auth
+        
+        # Get all user bookmarks
+        bookmarks = UserBookmark.objects.filter(user=user).order_by('-bookmarked_date')
+        
+        bookmarks_data = []
+        for bookmark in bookmarks:
+            if bookmark.program_type == 'program' and bookmark.program:
+                program = bookmark.program
+                # Calculate discounted price
+                discounted_price = program.price
+                if program.discount_percentage > 0:
+                    discounted_price = program.price * (1 - program.discount_percentage / 100)
+                
+                bookmark_data = {
+                    "bookmark_id": bookmark.id,
+                    "program": {
+                        "id": program.id,
+                        "type": "program",
+                        "title": program.title,
+                        "subtitle": program.subtitle,
+                        "description": program.description,
+                        "category": {
+                            "id": program.category.id,
+                            "name": program.category.name,
+                        } if program.category else None,
+                        "image": program.image.url if program.image else None,
+                        "duration": program.duration,
+                        "program_rating": float(program.program_rating),
+                        "is_best_seller": program.is_best_seller,
+                        "enrolled_students": UserPurchase.objects.filter(
+                            program=program,
+                            status='completed'
+                        ).count(),
+                        "pricing": {
+                            "original_price": float(program.price),
+                            "discount_percentage": float(program.discount_percentage),
+                            "discounted_price": float(discounted_price),
+                            "savings": float(program.price - discounted_price)
+                        },
+                    },
+                    "bookmarked_date": bookmark.bookmarked_date.isoformat()
+                }
+            elif bookmark.program_type == 'advanced_program' and bookmark.advanced_program:
+                program = bookmark.advanced_program
+                # Calculate discounted price
+                discounted_price = program.price
+                if program.discount_percentage > 0:
+                    discounted_price = program.price * (1 - program.discount_percentage / 100)
+                
+                bookmark_data = {
+                    "bookmark_id": bookmark.id,
+                    "program": {
+                        "id": program.id,
+                        "type": "advanced_program",
+                        "title": program.title,
+                        "subtitle": program.subtitle,
+                        "description": program.description,
+                        "category": None,  # Advanced programs don't have categories
+                        "image": program.image.url if program.image else None,
+                        "duration": program.duration,
+                        "program_rating": float(program.program_rating),
+                        "is_best_seller": program.is_best_seller,
+                        "enrolled_students": UserPurchase.objects.filter(
+                            advanced_program=program,
+                            status='completed'
+                        ).count(),
+                        "pricing": {
+                            "original_price": float(program.price),
+                            "discount_percentage": float(program.discount_percentage),
+                            "discounted_price": float(discounted_price),
+                            "savings": float(program.price - discounted_price)
+                        },
+                    },
+                    "bookmarked_date": bookmark.bookmarked_date.isoformat()
+                }
+            else:
+                continue  # Skip invalid bookmarks
+            
+            bookmarks_data.append(bookmark_data)
+        
+        return {
+            "success": True,
+            "count": len(bookmarks_data),
+            "bookmarks": bookmarks_data
+        }
+        
+    except Exception as e:
+        return JsonResponse({"success": False, "message": f"Error fetching bookmarks: {str(e)}"}, status=500)
 
 @api.post("/purchase", auth=AuthBearer())
 def purchase_course(request, data: PurchaseSchema):
@@ -331,14 +680,16 @@ def purchase_course(request, data: PurchaseSchema):
         return {
             "success": True,
             "message": "Course purchased successfully!",
+            "pricing": {
+                "original_price": float(original_price),
+                "discount_percentage": float(discount_percentage),
+                "discounted_price": float(final_price),
+                "savings": float(original_price - final_price)
+            },
             "purchase": {
                 "id": purchase.id,
                 "program_type": purchase.program_type,
                 "program_title": program.title,
-                "original_price": float(original_price),
-                "discount_percentage": float(discount_percentage),
-                "final_price": float(final_price),
-                "savings": float(original_price - final_price),
                 "purchase_date": purchase.purchase_date.isoformat(),
                 "status": purchase.status,
                 "transaction_id": transaction_id
@@ -347,7 +698,6 @@ def purchase_course(request, data: PurchaseSchema):
         
     except Exception as e:
         return JsonResponse({"success": False, "message": f"Error processing purchase: {str(e)}"}, status=500)
-
 
 def dummy_payment_gateway(amount, payment_method, transaction_id):
     """
@@ -370,214 +720,6 @@ def dummy_payment_gateway(amount, payment_method, transaction_id):
         # Payment failed
         print(f"[DUMMY PAYMENT] FAILED - Transaction ID: {transaction_id}, Amount: ₹{amount}, Method: {payment_method}")
         return False
-
-
-@api.post("/bookmark", auth=AuthBearer())
-def add_to_bookmark(request, data: BookmarkSchema):
-    """
-    Add a course (program or advanced program) to user's bookmarks
-    """
-    try:
-        user = request.auth
-        
-        # Get request data from schema
-        program_type = data.program_type  # 'program' or 'advanced_program'
-        program_id = data.program_id
-        
-        # Validate input
-        if program_type not in ['program', 'advanced_program']:
-            return JsonResponse({"success": False, "message": "Invalid program_type. Must be 'program' or 'advanced_program'"}, status=400)
-        
-        # Get the program
-        try:
-            if program_type == 'program':
-                program = Program.objects.get(id=program_id)
-                program_obj = program
-                advanced_program_obj = None
-            else:
-                program = AdvanceProgram.objects.get(id=program_id)
-                program_obj = None
-                advanced_program_obj = program
-        except (Program.DoesNotExist, AdvanceProgram.DoesNotExist):
-            return JsonResponse({"success": False, "message": "Program not found"}, status=404)
-        
-        # Check if already bookmarked
-        existing_bookmark = UserBookmark.objects.filter(
-            user=user,
-            program_type=program_type,
-            program=program_obj,
-            advanced_program=advanced_program_obj
-        ).first()
-        
-        if existing_bookmark:
-            return JsonResponse({
-                "success": False,
-                "message": "Course is already in your bookmarks"
-            }, status=400)
-        
-        # Create bookmark
-        bookmark = UserBookmark.objects.create(
-            user=user,
-            program_type=program_type,
-            program=program_obj,
-            advanced_program=advanced_program_obj,
-            bookmarked_date=timezone.now()
-        )
-        
-        return {
-            "success": True,
-            "message": "Course added to bookmarks successfully!",
-            "bookmark": {
-                "id": bookmark.id,
-                "program_type": bookmark.program_type,
-                "program_title": program.title,
-                "program_id": program.id,
-                "bookmarked_date": bookmark.bookmarked_date.isoformat()
-            }
-        }
-        
-    except Exception as e:
-        return JsonResponse({"success": False, "message": f"Error adding bookmark: {str(e)}"}, status=500)
-
-
-@api.delete("/bookmark", auth=AuthBearer())
-def remove_from_bookmark(request, data: BookmarkSchema):
-    """
-    Remove a course from user's bookmarks
-    """
-    try:
-        user = request.auth
-        
-        # Get request data from schema
-        program_type = data.program_type
-        program_id = data.program_id
-        
-        # Validate input
-        if program_type not in ['program', 'advanced_program']:
-            return JsonResponse({"success": False, "message": "Invalid program_type. Must be 'program' or 'advanced_program'"}, status=400)
-        
-        # Get the program objects
-        try:
-            if program_type == 'program':
-                program_obj = Program.objects.get(id=program_id)
-                advanced_program_obj = None
-            else:
-                program_obj = None
-                advanced_program_obj = AdvanceProgram.objects.get(id=program_id)
-        except (Program.DoesNotExist, AdvanceProgram.DoesNotExist):
-            return JsonResponse({"success": False, "message": "Program not found"}, status=404)
-        
-        # Find and delete bookmark
-        bookmark = UserBookmark.objects.filter(
-            user=user,
-            program_type=program_type,
-            program=program_obj,
-            advanced_program=advanced_program_obj
-        ).first()
-        
-        if not bookmark:
-            return JsonResponse({
-                "success": False,
-                "message": "Course is not in your bookmarks"
-            }, status=404)
-        
-        program_title = program_obj.title if program_obj else advanced_program_obj.title
-        bookmark.delete()
-        
-        return {
-            "success": True,
-            "message": f"'{program_title}' removed from bookmarks successfully!"
-        }
-        
-    except Exception as e:
-        return JsonResponse({"success": False, "message": f"Error removing bookmark: {str(e)}"}, status=500)
-
-
-@api.get("/bookmarks", auth=AuthBearer())
-def get_user_bookmarks(request):
-    """
-    Get all bookmarks for the authenticated user
-    """
-    try:
-        user = request.auth
-        
-        # Get all user bookmarks
-        bookmarks = UserBookmark.objects.filter(user=user).order_by('-bookmarked_date')
-        
-        bookmarks_data = []
-        for bookmark in bookmarks:
-            if bookmark.program_type == 'program' and bookmark.program:
-                program = bookmark.program
-                # Calculate discounted price
-                discounted_price = program.price
-                if program.discount_percentage > 0:
-                    discounted_price = program.price * (1 - program.discount_percentage / 100)
-                
-                bookmark_data = {
-                    "bookmark_id": bookmark.id,
-                    "program_type": "program",
-                    "program": {
-                        "id": program.id,
-                        "title": program.title,
-                        "subtitle": program.subtitle,
-                        "description": program.description,
-                        "category": {
-                            "id": program.category.id,
-                            "name": program.category.name,
-                            "icon": program.category.icon
-                        } if program.category else None,
-                        "image": program.image.url if program.image else None,
-                        "batch_starts": program.batch_starts,
-                        "duration": program.duration,
-                        "program_rating": float(program.program_rating),
-                        "is_best_seller": program.is_best_seller,
-                        "price": float(program.price),
-                        "discount_percentage": float(program.discount_percentage),
-                        "discounted_price": float(discounted_price)
-                    },
-                    "bookmarked_date": bookmark.bookmarked_date.isoformat()
-                }
-            elif bookmark.program_type == 'advanced_program' and bookmark.advanced_program:
-                program = bookmark.advanced_program
-                # Calculate discounted price
-                discounted_price = program.price
-                if program.discount_percentage > 0:
-                    discounted_price = program.price * (1 - program.discount_percentage / 100)
-                
-                bookmark_data = {
-                    "bookmark_id": bookmark.id,
-                    "program_type": "advanced_program",
-                    "program": {
-                        "id": program.id,
-                        "title": program.title,
-                        "subtitle": program.subtitle,
-                        "description": program.description,
-                        "category": None,  # Advanced programs don't have categories
-                        "image": program.image.url if program.image else None,
-                        "batch_starts": program.batch_starts,
-                        "duration": program.duration,
-                        "program_rating": float(program.program_rating),
-                        "is_best_seller": program.is_best_seller,
-                        "price": float(program.price),
-                        "discount_percentage": float(program.discount_percentage),
-                        "discounted_price": float(discounted_price)
-                    },
-                    "bookmarked_date": bookmark.bookmarked_date.isoformat()
-                }
-            else:
-                continue  # Skip invalid bookmarks
-            
-            bookmarks_data.append(bookmark_data)
-        
-        return {
-            "success": True,
-            "count": len(bookmarks_data),
-            "bookmarks": bookmarks_data
-        }
-        
-    except Exception as e:
-        return JsonResponse({"success": False, "message": f"Error fetching bookmarks: {str(e)}"}, status=500)
-
 
 @api.get("/my-learnings", auth=AuthBearer())
 def get_my_learnings(
@@ -634,25 +776,30 @@ def get_my_learnings(
                 
                 learning_data = {
                     "purchase_id": purchase.id,
-                    "program_type": "program",
                     "program": {
                         "id": program.id,
+                        "type": "program",
                         "title": program.title,
                         "subtitle": program.subtitle,
                         "description": program.description,
                         "category": {
                             "id": program.category.id,
                             "name": program.category.name,
-                            "icon": program.category.icon
                         } if program.category else None,
                         "image": program.image.url if program.image else None,
-                        "batch_starts": program.batch_starts,
                         "duration": program.duration,
                         "program_rating": float(program.program_rating),
                         "is_best_seller": program.is_best_seller,
-                        "price": float(program.price),
-                        "discount_percentage": float(program.discount_percentage),
-                        "discounted_price": float(discounted_price)
+                        "enrolled_students": UserPurchase.objects.filter(
+                            program=program,
+                            status='completed'
+                        ).count(),
+                        "pricing": {
+                            "original_price": float(program.price),
+                            "discount_percentage": float(program.discount_percentage),
+                            "discounted_price": float(discounted_price),
+                            "savings": float(program.price - discounted_price)
+                        },
                     },
                     "purchase_date": purchase.purchase_date.isoformat(),
                     "progress": {
@@ -678,21 +825,27 @@ def get_my_learnings(
                 
                 learning_data = {
                     "purchase_id": purchase.id,
-                    "program_type": "advanced_program",
                     "program": {
                         "id": program.id,
+                        "type": "advanced_program",
                         "title": program.title,
                         "subtitle": program.subtitle,
                         "description": program.description,
                         "category": None,  # Advanced programs don't have categories
                         "image": program.image.url if program.image else None,
-                        "batch_starts": program.batch_starts,
                         "duration": program.duration,
                         "program_rating": float(program.program_rating),
                         "is_best_seller": program.is_best_seller,
-                        "price": float(program.price),
-                        "discount_percentage": float(program.discount_percentage),
-                        "discounted_price": float(discounted_price)
+                        "enrolled_students": UserPurchase.objects.filter(
+                            advanced_program=program,
+                            status='completed'
+                        ).count(),
+                        "pricing": {
+                            "original_price": float(program.price),
+                            "discount_percentage": float(program.discount_percentage),
+                            "discounted_price": float(discounted_price),
+                            "savings": float(program.price - discounted_price)
+                        },
                     },
                     "purchase_date": purchase.purchase_date.isoformat(),
                     "progress": {
@@ -727,7 +880,6 @@ def get_my_learnings(
         
     except Exception as e:
         return JsonResponse({"success": False, "message": f"Error fetching learnings: {str(e)}"}, status=500)
-
 
 @api.post("/learning/update-progress", auth=AuthBearer())
 def update_learning_progress(request, data: UpdateProgressSchema):
@@ -831,7 +983,6 @@ def update_learning_progress(request, data: UpdateProgressSchema):
     except Exception as e:
         return JsonResponse({"success": False, "message": f"Error updating progress: {str(e)}"}, status=500)
 
-
 @api.get("/learning/course/{purchase_id}", auth=AuthBearer())
 def get_course_learning_details(request, purchase_id: int):
     """
@@ -889,7 +1040,6 @@ def get_course_learning_details(request, purchase_id: int):
                                 'total_duration_seconds': 2700,  # 45 minutes default
                             }
                         )
-        
         course_progress.update_progress()
         
         # Get program details
@@ -935,12 +1085,15 @@ def get_course_learning_details(request, purchase_id: int):
                     total_hours = topic_progress.total_duration_seconds // 3600
                     total_minutes = (topic_progress.total_duration_seconds % 3600) // 60
                     
+                    is_intro = getattr(topic, 'is_intro', False)
                     topic_data = {
                         "id": topic.id,
                         "topic_title": topic.topic_title,
                         "topic_type": topic_type,
                         "is_free_trail": getattr(topic, 'is_free_trail', False),
-                        "is_intro": getattr(topic, 'is_intro', False),
+                        "is_intro": is_intro,
+                        "is_locked": False,  # User has purchased, so not locked
+                        "video_url": topic.video_url,  # Show video URL since user purchased
                         "progress": {
                             "status": topic_progress.status,
                             "completion_percentage": float(topic_progress.completion_percentage),
@@ -955,12 +1108,15 @@ def get_course_learning_details(request, purchase_id: int):
                     }
                 else:
                     # Topic not started
+                    is_intro = getattr(topic, 'is_intro', False)
                     topic_data = {
                         "id": topic.id,
                         "topic_title": topic.topic_title,
                         "topic_type": topic_type,
                         "is_free_trail": getattr(topic, 'is_free_trail', False),
-                        "is_intro": getattr(topic, 'is_intro', False),
+                        "is_intro": is_intro,
+                        "is_locked": False,  # User has purchased, so not locked
+                        "video_url": topic.video_url,  # Show video URL since user purchased
                         "progress": {
                             "status": "not_started",
                             "completion_percentage": 0,
@@ -1017,186 +1173,3 @@ def get_course_learning_details(request, purchase_id: int):
     except Exception as e:
         return JsonResponse({"success": False, "message": f"Error fetching course details: {str(e)}"}, status=500)
 
-
-@api.get("/programs/filter")
-def get_all_programs_with_filters(
-    request,
-    program_type: str = None,
-    category_id: int = None,
-    is_best_seller: bool = None,
-    min_price: float = None,
-    max_price: float = None,
-    min_rating: float = None,
-    search: str = None,
-    sort_by: str = 'title',
-    sort_order: str = 'asc'
-):
-    """
-    Get all programs (regular and advanced) with comprehensive filtering options
-    """
-    try:
-        # Filter parameters are now function arguments
-        # Convert string category_id to int if provided
-        if category_id is not None:
-            category_id = str(category_id)
-        
-        all_programs = []
-        
-        # Include regular programs
-        if program_type in [None, 'all', 'program']:
-            programs_query = Program.objects.all().select_related('category')
-            
-            # Apply category filter for regular programs
-            if category_id is not None:
-                try:
-                    category = Category.objects.get(id=category_id)
-                    programs_query = programs_query.filter(category=category)
-                except Category.DoesNotExist:
-                    pass  # Skip invalid category
-            
-            # Apply other filters
-            if is_best_seller is not None:
-                programs_query = programs_query.filter(is_best_seller=is_best_seller)
-            
-            if min_price is not None:
-                programs_query = programs_query.filter(price__gte=min_price)
-            
-            if max_price is not None:
-                programs_query = programs_query.filter(price__lte=max_price)
-            
-            if min_rating is not None:
-                programs_query = programs_query.filter(program_rating__gte=min_rating)
-            
-            if search:
-                programs_query = programs_query.filter(
-                    models.Q(title__icontains=search) | 
-                    models.Q(description__icontains=search) |
-                    models.Q(subtitle__icontains=search)
-                )
-            
-            # Convert regular programs to unified format
-            for program in programs_query:
-                discounted_price = program.price
-                if program.discount_percentage > 0:
-                    discounted_price = program.price * (1 - program.discount_percentage / 100)
-                
-                program_data = {
-                    "id": program.id,
-                    "type": "program",
-                    "title": program.title,
-                    "subtitle": program.subtitle,
-                    "description": program.description,
-                    "category": {
-                        "id": program.category.id,
-                        "name": program.category.name,
-                        "description": program.category.description,
-                        "icon": program.category.icon
-                    } if program.category else None,
-                    "image": program.image.url if program.image else None,
-                    "batch_starts": program.batch_starts,
-                    "available_slots": program.available_slots,
-                    "duration": program.duration,
-                    "program_rating": float(program.program_rating),
-                    "job_openings": program.job_openings,
-                    "global_market_size": program.global_market_size,
-                    "avg_annual_salary": program.avg_annual_salary,
-                    "is_best_seller": program.is_best_seller,
-                    "icon": program.icon,
-                    "enrolled_students": UserPurchase.objects.filter(
-                        program=program,
-                        status='completed'
-                    ).count(),
-                    "price": float(program.price),
-                    "discount_percentage": float(program.discount_percentage),
-                    "discounted_price": float(discounted_price)
-                }
-                all_programs.append(program_data)
-        
-        # Include advanced programs
-        if program_type in [None, 'all', 'advanced_program']:
-            advanced_programs_query = AdvanceProgram.objects.all()
-            
-            # Apply filters (category filter not applicable for advanced programs)
-            if is_best_seller is not None:
-                advanced_programs_query = advanced_programs_query.filter(is_best_seller=is_best_seller)
-            
-            if min_price is not None:
-                advanced_programs_query = advanced_programs_query.filter(price__gte=min_price)
-            
-            if max_price is not None:
-                advanced_programs_query = advanced_programs_query.filter(price__lte=max_price)
-            
-            if min_rating is not None:
-                advanced_programs_query = advanced_programs_query.filter(program_rating__gte=min_rating)
-            
-            if search:
-                advanced_programs_query = advanced_programs_query.filter(
-                    models.Q(title__icontains=search) | 
-                    models.Q(description__icontains=search) |
-                    models.Q(subtitle__icontains=search)
-                )
-            
-            # Convert advanced programs to unified format
-            for program in advanced_programs_query:
-                discounted_price = program.price
-                if program.discount_percentage > 0:
-                    discounted_price = program.price * (1 - program.discount_percentage / 100)
-                
-                program_data = {
-                    "id": program.id,
-                    "type": "advanced_program",
-                    "title": program.title,
-                    "subtitle": program.subtitle,
-                    "description": program.description,
-                    "category": None,  # Advanced programs don't have categories
-                    "image": program.image.url if program.image else None,
-                    "batch_starts": program.batch_starts,
-                    "available_slots": program.available_slots,
-                    "duration": program.duration,
-                    "program_rating": float(program.program_rating),
-                    "job_openings": program.job_openings,
-                    "global_market_size": program.global_market_size,
-                    "avg_annual_salary": program.avg_annual_salary,
-                    "is_best_seller": program.is_best_seller,
-                    "icon": program.icon,
-                    "enrolled_students": UserPurchase.objects.filter(
-                        advanced_program=program,
-                        status='completed'
-                    ).count(),
-                    "price": float(program.price),
-                    "discount_percentage": float(program.discount_percentage),
-                    "discounted_price": float(discounted_price)
-                }
-                all_programs.append(program_data)
-        
-        # Apply sorting to combined results
-        if sort_by in ['title', 'price', 'program_rating', 'available_slots', 'discounted_price']:
-            reverse_order = sort_order == 'desc'
-            all_programs.sort(key=lambda x: x.get(sort_by, 0), reverse=reverse_order)
-        
-        # Get filter statistics
-        regular_count = sum(1 for p in all_programs if p['type'] == 'program')
-        advanced_count = sum(1 for p in all_programs if p['type'] == 'advanced_program')
-        
-        return {
-            "success": True,
-            "filters_applied": {
-                "program_type": program_type or 'all',
-                "category_id": category_id,
-                "is_best_seller": is_best_seller,
-                "min_price": min_price,
-                "max_price": max_price,
-                "min_rating": min_rating,
-                "search": search,
-                "sort_by": sort_by,
-                "sort_order": sort_order
-            },
-            "statistics": {
-                "total_count": len(all_programs),
-                "regular_programs_count": regular_count,
-                "advanced_programs_count": advanced_count
-            },
-            "programs": all_programs
-        }
-    except Exception as e:
-        return JsonResponse({"success": False, "message": f"Error fetching filtered programs: {str(e)}"}, status=500)
