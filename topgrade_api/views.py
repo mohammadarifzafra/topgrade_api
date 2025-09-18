@@ -166,6 +166,61 @@ def get_landing_data(request):
         for program in advance_programs:
             advanced_programs.append(format_program_data(program, 'advanced_program'))
         
+        # Continue Watching - Recently watched programs for authenticated users only
+        continue_watching = []
+        user = getattr(request, 'auth', None) if hasattr(request, 'auth') else None
+        
+        if user and user.is_authenticated:
+            # Get user's recent topic progress (videos they've started but not completed)
+            recent_progress = UserTopicProgress.objects.filter(
+                user=user,
+                status__in=['in_progress', 'completed']
+            ).select_related(
+                'purchase__program', 
+                'purchase__advanced_program',
+                'topic__syllabus__program',
+                'advance_topic__advance_syllabus__advance_program'
+            ).order_by('-last_watched_at')[:10]  # Get more to filter unique programs
+            
+            seen_programs = set()
+            for progress in recent_progress:
+                if len(continue_watching) >= 2:
+                    break
+                    
+                # Get the program from the progress
+                program = None
+                program_type = None
+                
+                if progress.purchase.program_type == 'program' and progress.purchase.program:
+                    program = progress.purchase.program
+                    program_type = 'program'
+                elif progress.purchase.program_type == 'advanced_program' and progress.purchase.advanced_program:
+                    program = progress.purchase.advanced_program
+                    program_type = 'advanced_program'
+                
+                if program and program.id not in seen_programs:
+                    seen_programs.add(program.id)
+                    
+                    # Get course progress for this program
+                    course_progress = UserCourseProgress.objects.filter(
+                        user=user,
+                        purchase=progress.purchase
+                    ).first()
+                    
+                    program_data = format_program_data(program, program_type)
+                    
+                    # Add progress information
+                    program_data['progress'] = {
+                        "percentage": float(course_progress.completion_percentage) if course_progress else 0.0,
+                        "status": "completed" if course_progress and course_progress.is_completed else "in_progress",
+                        "last_watched_at": progress.last_watched_at.isoformat(),
+                        "last_watched_topic": progress.topic.topic_title if progress.topic else progress.advance_topic.topic_title,
+                        "completed_topics": course_progress.completed_topics if course_progress else 0,
+                        "total_topics": course_progress.total_topics if course_progress else 0
+                    }
+                    
+                    continue_watching.append(program_data)
+        
         return {
             "success": True,
             "data": {
@@ -173,7 +228,16 @@ def get_landing_data(request):
                 "recently_added": recently_added[:5],  # Ensure max 5
                 "featured": featured[:5],  # Ensure max 5
                 "programs": programs,  # Already limited to 5
-                "advanced_programs": advanced_programs  # Already limited to 5
+                "advanced_programs": advanced_programs,  # Already limited to 5
+                "continue_watching": continue_watching  # Max 5, empty if not authenticated
+            },
+            "counts": {
+                "top_course": len(top_course[:5]),
+                "recently_added": len(recently_added[:5]),
+                "featured": len(featured[:5]),
+                "programs": len(programs),
+                "advanced_programs": len(advanced_programs),
+                "continue_watching": len(continue_watching)
             }
         }
         
